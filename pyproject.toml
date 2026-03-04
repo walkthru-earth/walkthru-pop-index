@@ -1,7 +1,7 @@
 [project]
 name = "walkthru-pop-index"
 version = "0.1.0"
-description = "Add your description here"
+description = "WorldPop SSP population projections aggregated to H3-indexed GeoParquet"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

@@ -58,14 +58,14 @@ ORDER BY pop_2025 DESC
 LIMIT 10;
 ```
 
-## Data source
+## Source
 
 **WorldPop Global SSP Projections v0.2** — 30 arc-second (~1 km) gridded population projections for 2025–2100 under five Shared Socioeconomic Pathways.
 
-- DOI: [10.5258/SOTON/WP00849](https://doi.org/10.5258/SOTON/WP00849)
-- CRS: EPSG:4326 (WGS 84)
-- Aggregation: SUM per H3 cell
+> WorldPop. (2018). Global 1km-grid population projections, v0.2. University of Southampton. [doi:10.5258/SOTON/WP00849](https://doi.org/10.5258/SOTON/WP00849)
 
 ## License
 
-[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) by [walkthru.earth](https://walkthru.earth/links)
+This project is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) by [walkthru.earth](https://github.com/walkthru-earth). See [LICENSE](LICENSE) for details. The source [WorldPop SSP Projections](https://doi.org/10.5258/SOTON/WP00849) is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) by the [University of Southampton](https://www.worldpop.org/).
+
+Contact: [hi@walkthru.earth](mailto:hi@walkthru.earth)
