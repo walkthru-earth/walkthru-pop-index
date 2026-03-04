@@ -4,7 +4,7 @@
 
 **walkthru-pop-index** — Global population projections (WorldPop SSP 1km) → H3-indexed Parquet with native Parquet 2.11+ GEOMETRY.
 
-Part of the [walkthru-earth](https://github.com/walkthru-earth) index family alongside `dem-terrain` and `walkthru-weather-index`.
+Part of the [walkthru-earth](https://github.com/walkthru-earth) index family alongside `dem-terrain`, `walkthru-building-index`, and `walkthru-weather-index`.
 
 ## Commands
 
@@ -26,6 +26,12 @@ uv run python main.py --dry-run                    # Preview windows
 uv run python main.py --skip-download              # Reuse existing data
 ```
 
+## Source data
+
+- **WorldPop Global SSP Projections v0.2**: `https://data.worldpop.org/repo/prj/FuturePop/SSPs_1km_v0_2`
+- 30 arc-second (~1 km) gridded population projections, 2025–2100, five SSP scenarios
+- Citation: WorldPop (2018). Global 1km-grid population projections, v0.2. University of Southampton. [doi:10.5258/SOTON/WP00849](https://doi.org/10.5258/SOTON/WP00849)
+
 ## Architecture
 
 ```
@@ -45,10 +51,10 @@ Phase 4: DuckDB merge per resolution
 Phase 5: _metadata.json
 ```
 
-## Output layout
+## S3 output layout
 
 ```
-population/
+s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/
   scenario=SSP2/
     h3_res=1/data.parquet
     h3_res=2/data.parquet
@@ -74,6 +80,11 @@ Each Parquet file: `h3_index, geometry, lat, lon, area_km2, pop_2025, pop_2030, 
 - **`uv add`** for dependency management — never edit pyproject.toml manually
 - **`uv run ruff format . && uv run ruff check . --fix`** before every commit
 
+## Documentation files
+
+- `README.md` — GitHub repo README (code usage)
+- `SC_README.md` — Source Cooperative dataset README (uploaded to S3 as `indices/population/README.md`)
+
 ## File layout
 
 ```
@@ -87,3 +98,7 @@ inspection/
 pyproject.toml       Dependencies (rasterio, h3, duckdb==1.5.0.dev329, numpy, pyarrow)
 CLAUDE.md            This file
 ```
+
+## License
+
+CC BY 4.0 by walkthru-earth. Source data by University of Southampton (WorldPop), CC BY 4.0.
