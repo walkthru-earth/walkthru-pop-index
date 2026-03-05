@@ -55,18 +55,32 @@ df = con.sql("""
 ```
 walkthru-earth/indices/population/
   v2/scenario=SSP2/                              # recommended
-    h3_res=1/data.parquet        430 cells
-    h3_res=2/data.parquet      2,222 cells
-    h3_res=3/data.parquet     12,310 cells
-    h3_res=4/data.parquet     71,552 cells
-    h3_res=5/data.parquet    414,388 cells
-    h3_res=6/data.parquet  2,288,660 cells
-    h3_res=7/data.parquet 11,421,958 cells
-    h3_res=8/data.parquet 44,888,216 cells
+    h3_res=1/data.parquet     28.5 KB        430 cells
+    h3_res=2/data.parquet      136 KB      2,222 cells
+    h3_res=3/data.parquet      739 KB     12,310 cells
+    h3_res=4/data.parquet      4.2 MB     71,552 cells
+    h3_res=5/data.parquet     24.2 MB    414,388 cells
+    h3_res=6/data.parquet      132 MB  2,288,660 cells
+    h3_res=7/data.parquet      656 MB 11,421,958 cells
+    h3_res=8/data.parquet      2.5 GB 44,888,216 cells
     _metadata.json
   v1/scenario=SSP2/                              # legacy (VARCHAR h3_index, has geometry/lat/lon/area_km2)
     h3_res=1/data.parquet .. h3_res=8/data.parquet
 ```
+
+### Size comparison
+
+| Res | Cells | v2 (BIGINT, 17 cols) | v1 (VARCHAR, 21 cols) | Reduction |
+|-----|------:|---------------------:|----------------------:|----------:|
+| 1 | 430 | 28.5 KB | 39.2 KB | 27% |
+| 2 | 2,222 | 136 KB | 175 KB | 22% |
+| 3 | 12,310 | 739 KB | 945 KB | 22% |
+| 4 | 71,552 | 4.2 MB | 5.3 MB | 21% |
+| 5 | 414,388 | 24.2 MB | 30.7 MB | 21% |
+| 6 | 2,288,660 | 132 MB | 168 MB | 21% |
+| 7 | 11,421,958 | 656 MB | 832 MB | 21% |
+| 8 | 44,888,216 | 2.5 GB | 3.2 GB | 22% |
+| **Total** | **59.1 M** | **~3.4 GB** | **~4.3 GB** | **21%** |
 
 Compression: ZSTD level 3. Row groups: 1,000,000 rows.
 
