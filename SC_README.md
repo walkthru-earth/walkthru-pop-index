@@ -1,44 +1,52 @@
 # Global Population Projections (H3-indexed)
 
-WorldPop SSP 1km population projections (2025–2100) aggregated to [H3](https://h3geo.org/) hexagonal cells in [native Parquet 2.11+ GEOMETRY](https://github.com/apache/parquet-format/blob/master/Geospatial.md) format. Eight H3 resolutions (1–8), one file per resolution, sorted by `h3_index`.
+WorldPop SSP 1km population projections (2025–2100) aggregated to [H3](https://h3geo.org/) hexagonal cells in optimized Parquet format. Eight H3 resolutions (1–8), one file per resolution, sorted by `h3_index`. v2 (recommended) uses BIGINT `h3_index` with 17 columns; v1 (legacy) uses VARCHAR `h3_index` with geometry/lat/lon/area_km2.
 
 | | |
 |---|---|
 | **Source** | [WorldPop](https://www.worldpop.org/) Global SSP Projections v0.2, 30 arc-second (~1 km), global coverage |
-| **Format** | Apache Parquet with native GEOMETRY logical type (DuckDB 1.5) |
-| **CRS** | EPSG:4326 (WGS 84) |
+| **Format** | Apache Parquet (v2 optimized: BIGINT h3_index, no geometry columns) |
+| **CRS** | EPSG:4326 (derivable via DuckDB h3 extension) |
 | **License** | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) by [walkthru.earth](https://walkthru.earth/links) |
 | **Code** | [walkthru-earth/walkthru-pop-index](https://github.com/walkthru-earth/walkthru-pop-index) |
 
 ## Quick Start
 
 ```sql
--- DuckDB
-INSTALL spatial; LOAD spatial;
-INSTALL httpfs;  LOAD httpfs;
+-- DuckDB (v2, recommended)
+INSTALL h3 FROM community; LOAD h3;
+INSTALL httpfs;             LOAD httpfs;
 SET s3_region = 'us-west-2';
 
-SELECT h3_index, pop_2025, pop_2050, pop_2100,
+SELECT h3_index,
+       h3_h3_to_string(h3_index) AS h3_hex,
+       h3_cell_to_lat(h3_index) AS lat,
+       h3_cell_to_lng(h3_index) AS lng,
+       pop_2025, pop_2050, pop_2100,
        (pop_2100 / pop_2025)::FLOAT AS growth_ratio
-FROM read_parquet('s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/scenario=SSP2/h3_res=5/data.parquet')
+FROM read_parquet('s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/v2/scenario=SSP2/h3_res=5/data.parquet')
 ORDER BY pop_2025 DESC
 LIMIT 20;
 ```
 
 ```python
-# Python
+# Python (v2)
 import duckdb
 
 con = duckdb.connect()
-for ext in ("spatial", "httpfs"):
-    con.install_extension(ext); con.load_extension(ext)
+con.install_extension("httpfs"); con.load_extension("httpfs")
+con.execute("INSTALL h3 FROM community"); con.load_extension("h3")
 con.sql("SET s3_region = 'us-west-2'")
 
 df = con.sql("""
-    SELECT h3_index, lat, lon, pop_2025, pop_2050, pop_2100
+    SELECT h3_index,
+           h3_cell_to_lat(h3_index) AS lat,
+           h3_cell_to_lng(h3_index) AS lng,
+           pop_2025, pop_2050, pop_2100
     FROM read_parquet(
-        's3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/scenario=SSP2/h3_res=5/data.parquet'
-    ) WHERE lat BETWEEN 20 AND 35 AND lon BETWEEN 68 AND 90
+        's3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/v2/scenario=SSP2/h3_res=5/data.parquet'
+    ) WHERE h3_cell_to_lat(h3_index) BETWEEN 20 AND 35
+        AND h3_cell_to_lng(h3_index) BETWEEN 68 AND 90
 """).fetchdf()
 ```
 
@@ -46,29 +54,27 @@ df = con.sql("""
 
 ```
 walkthru-earth/indices/population/
-  scenario=SSP2/
-    h3_res=1/data.parquet        40 KB          430 cells
-    h3_res=2/data.parquet       179 KB        2,222 cells
-    h3_res=3/data.parquet       968 KB       12,310 cells
-    h3_res=4/data.parquet       5.6 MB       71,552 cells
-    h3_res=5/data.parquet        32 MB      414,388 cells
-    h3_res=6/data.parquet       176 MB    2,288,660 cells
-    h3_res=7/data.parquet       873 MB   11,421,958 cells
-    h3_res=8/data.parquet       3.4 GB   44,888,216 cells
+  v2/scenario=SSP2/                              # recommended
+    h3_res=1/data.parquet        430 cells
+    h3_res=2/data.parquet      2,222 cells
+    h3_res=3/data.parquet     12,310 cells
+    h3_res=4/data.parquet     71,552 cells
+    h3_res=5/data.parquet    414,388 cells
+    h3_res=6/data.parquet  2,288,660 cells
+    h3_res=7/data.parquet 11,421,958 cells
+    h3_res=8/data.parquet 44,888,216 cells
     _metadata.json
+  v1/scenario=SSP2/                              # legacy (VARCHAR h3_index, has geometry/lat/lon/area_km2)
+    h3_res=1/data.parquet .. h3_res=8/data.parquet
 ```
 
 Compression: ZSTD level 3. Row groups: 1,000,000 rows.
 
-## Schema
+## Schema (v2, recommended)
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `h3_index` | VARCHAR | H3 cell ID (hex string) |
-| `geometry` | GEOMETRY | Cell center point (native Parquet 2.11+ GEOMETRY, EPSG:4326) |
-| `lat` | FLOAT | Cell center latitude (degrees) |
-| `lon` | FLOAT | Cell center longitude (degrees) |
-| `area_km2` | FLOAT | H3 cell area (km²) |
+| `h3_index` | BIGINT | H3 cell ID (integer representation) |
 | `pop_2025` | FLOAT | Projected population count, 2025 |
 | `pop_2030` | FLOAT | Projected population count, 2030 |
 | `pop_2035` | FLOAT | Projected population count, 2035 |
@@ -86,12 +92,14 @@ Compression: ZSTD level 3. Row groups: 1,000,000 rows.
 | `pop_2095` | FLOAT | Projected population count, 2095 |
 | `pop_2100` | FLOAT | Projected population count, 2100 |
 
+17 columns total. Geometry, lat/lon, and area_km2 from v1 are derivable from `h3_index` via the DuckDB `h3` extension (e.g., `h3_cell_to_lat(h3_index)`, `h3_cell_to_lng(h3_index)`).
+
 **Sample values** (res 5, most populated cells, SSP2 2025):
 
-| h3_index | lat | lon | pop_2025 | pop_2050 | pop_2100 |
-|----------|-----|-----|----------|----------|----------|
-| 855c9903fffffff | +28.6 | +77.2 | 9,834,719 | 10,512,443 | 8,914,326 |
-| 8544ad4bfffffff | +23.1 | +72.6 | 7,126,541 | 8,021,334 | 7,432,105 |
+| h3_index | pop_2025 | pop_2050 | pop_2100 |
+|----------|----------|----------|----------|
+| 599686542969856000 | 9,834,719 | 10,512,443 | 8,914,326 |
+| 599262598287056896 | 7,126,541 | 8,021,334 | 7,432,105 |
 
 ## How It Works
 
@@ -99,7 +107,7 @@ Compression: ZSTD level 3. Row groups: 1,000,000 rows.
 2. Each pixel is assigned to an H3 cell via `h3.latlng_to_cell()`
 3. Population counts are **summed** per H3 cell (correct for count data)
 4. Overlapping window-boundary cells are deduplicated via `GROUP BY h3_index, SUM()`
-5. Final Parquet is sorted by `h3_index` with native GEOMETRY via DuckDB spatial
+5. Final Parquet is sorted by `h3_index` (v2 stores BIGINT h3_index only; v1 legacy includes native GEOMETRY via DuckDB spatial)
 
 All resolutions produce consistent world totals (~8.19 billion for 2025).
 
@@ -107,44 +115,59 @@ All resolutions produce consistent world totals (~8.19 billion for 2025).
 
 ```sql
 -- Population growth hotspots (2025 → 2100)
-SELECT h3_index, lat, lon,
+SELECT h3_index,
+       h3_cell_to_lat(h3_index) AS lat,
+       h3_cell_to_lng(h3_index) AS lng,
        pop_2025, pop_2100,
        (pop_2100 / pop_2025)::FLOAT AS growth_ratio
-FROM read_parquet('s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/scenario=SSP2/h3_res=5/data.parquet')
+FROM read_parquet('s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/v2/scenario=SSP2/h3_res=5/data.parquet')
 WHERE pop_2025 > 100000
 ORDER BY growth_ratio DESC
 LIMIT 20;
 
 -- Continental totals
 SELECT CASE
-         WHEN lat BETWEEN -35 AND 37 AND lon BETWEEN -20 AND 55 THEN 'Africa'
-         WHEN lat BETWEEN 5 AND 55 AND lon BETWEEN 60 AND 150 THEN 'Asia'
-         WHEN lat BETWEEN 35 AND 72 AND lon BETWEEN -12 AND 45 THEN 'Europe'
-         WHEN lat BETWEEN -56 AND 15 AND lon BETWEEN -82 AND -34 THEN 'South America'
-         WHEN lat BETWEEN 15 AND 72 AND lon BETWEEN -170 AND -50 THEN 'North America'
+         WHEN h3_cell_to_lat(h3_index) BETWEEN -35 AND 37 AND h3_cell_to_lng(h3_index) BETWEEN -20 AND 55 THEN 'Africa'
+         WHEN h3_cell_to_lat(h3_index) BETWEEN 5 AND 55 AND h3_cell_to_lng(h3_index) BETWEEN 60 AND 150 THEN 'Asia'
+         WHEN h3_cell_to_lat(h3_index) BETWEEN 35 AND 72 AND h3_cell_to_lng(h3_index) BETWEEN -12 AND 45 THEN 'Europe'
+         WHEN h3_cell_to_lat(h3_index) BETWEEN -56 AND 15 AND h3_cell_to_lng(h3_index) BETWEEN -82 AND -34 THEN 'South America'
+         WHEN h3_cell_to_lat(h3_index) BETWEEN 15 AND 72 AND h3_cell_to_lng(h3_index) BETWEEN -170 AND -50 THEN 'North America'
          ELSE 'Other'
        END AS continent,
        SUM(pop_2025)::BIGINT AS pop_2025,
        SUM(pop_2050)::BIGINT AS pop_2050,
        SUM(pop_2100)::BIGINT AS pop_2100
-FROM read_parquet('s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/scenario=SSP2/h3_res=5/data.parquet')
+FROM read_parquet('s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/v2/scenario=SSP2/h3_res=5/data.parquet')
 GROUP BY continent
 ORDER BY pop_2025 DESC;
 
 -- DuckDB-WASM (browser) — use HTTPS URL
 SELECT h3_index, pop_2025, pop_2050
 FROM read_parquet(
-    'https://data.source.coop/walkthru-earth/indices/population/scenario=SSP2/h3_res=5/data.parquet'
+    'https://data.source.coop/walkthru-earth/indices/population/v2/scenario=SSP2/h3_res=5/data.parquet'
 )
-WHERE lat BETWEEN 35 AND 45 AND lon BETWEEN -10 AND 5
+WHERE h3_cell_to_lat(h3_index) BETWEEN 35 AND 45
+  AND h3_cell_to_lng(h3_index) BETWEEN -10 AND 5
 LIMIT 100;
 ```
 
-## Geometry Format
+## Geometry / Coordinate Derivation
 
-The `geometry` column uses the [native Parquet 2.11+ GEOMETRY logical type](https://github.com/apache/parquet-format/blob/master/Geospatial.md) with GeoParquet 1.0 file-level metadata for backwards compatibility (`GEOPARQUET_VERSION 'BOTH'`). DuckDB 1.5+ writes per-row-group bounding box statistics automatically.
+v2 files do not include geometry, lat, lon, or area_km2 columns — these are derivable from the BIGINT `h3_index` using the DuckDB `h3` community extension:
 
-Supported by: DuckDB 1.5+, Apache Arrow (Rust), Apache Iceberg, GDAL 3.12+.
+```sql
+INSTALL h3 FROM community; LOAD h3;
+
+SELECT h3_index,
+       h3_h3_to_string(h3_index)  AS h3_hex,
+       h3_cell_to_lat(h3_index)   AS lat,
+       h3_cell_to_lng(h3_index)   AS lng,
+       h3_cell_area(h3_index, 'km^2') AS area_km2
+FROM read_parquet('s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/v2/scenario=SSP2/h3_res=5/data.parquet')
+LIMIT 5;
+```
+
+v1 (legacy) files retain the original schema with VARCHAR `h3_index`, native Parquet 2.11+ GEOMETRY, lat, lon, and area_km2 columns. v1 is located at `indices/population/v1/scenario=SSP2/h3_res={1-8}/data.parquet`.
 
 ## Source
 

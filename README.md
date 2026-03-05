@@ -10,7 +10,11 @@ Hosted on [Source Cooperative](https://source.coop/):
 
 ```
 s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/
-  scenario=SSP2/
+  v1/scenario=SSP2/                          # legacy (VARCHAR h3_index, has geometry/lat/lon/area_km2)
+    h3_res=1/data.parquet     # 430 cells
+    ...
+    h3_res=8/data.parquet     # 44,888,216 cells
+  v2/scenario=SSP2/                          # recommended (BIGINT h3_index, optimized)
     h3_res=1/data.parquet     # 430 cells
     h3_res=2/data.parquet     # 2,222 cells
     ...
@@ -18,15 +22,14 @@ s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/
     _metadata.json
 ```
 
-**Schema** — each Parquet file contains:
+**Schema (v2, recommended)** — each Parquet file contains:
 
 | Column | Type | Description |
 |---|---|---|
-| `h3_index` | string | H3 cell ID |
-| `geometry` | GEOMETRY | Cell center (POINT, EPSG:4326) |
-| `lat`, `lon` | float32 | Cell center coordinates |
-| `area_km2` | float32 | Cell area in km² |
+| `h3_index` | BIGINT | H3 cell ID (integer representation) |
 | `pop_2025` … `pop_2100` | float32 | Projected population count (5-year steps) |
+
+17 columns total. Geometry, lat/lon, and area_km2 are derivable from `h3_index` via the DuckDB `h3` extension.
 
 ## Quick start
 
@@ -50,10 +53,17 @@ uv run python main.py --scenario SSP2 --workers 32  # run
 ## Query the output
 
 ```sql
--- DuckDB
-SELECT h3_index, pop_2025, pop_2050, pop_2100,
+-- DuckDB (v2)
+INSTALL h3 FROM community; LOAD h3;
+INSTALL httpfs;             LOAD httpfs;
+SET s3_region = 'us-west-2';
+
+SELECT h3_index,
+       h3_cell_to_lat(h3_index) AS lat,
+       h3_cell_to_lng(h3_index) AS lng,
+       pop_2025, pop_2050, pop_2100,
        (pop_2100 / pop_2025) AS growth_ratio
-FROM read_parquet('s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/scenario=SSP2/h3_res=5/data.parquet')
+FROM read_parquet('s3://us-west-2.opendata.source.coop/walkthru-earth/indices/population/v2/scenario=SSP2/h3_res=5/data.parquet')
 ORDER BY pop_2025 DESC
 LIMIT 10;
 ```
