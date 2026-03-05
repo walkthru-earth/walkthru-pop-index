@@ -306,20 +306,9 @@ def _process_window(task: dict) -> tuple[str, str, dict[int, int]]:
         unique_cells, inverse = np.unique(h3_cells, return_inverse=True)
         n_unique = len(unique_cells)
 
-        columns: dict[str, np.ndarray] = {"h3_index": unique_cells}
-
-        # Cell center coordinates and area
-        cell_lats = np.empty(n_unique, dtype=np.float32)
-        cell_lons = np.empty(n_unique, dtype=np.float32)
-        cell_areas = np.empty(n_unique, dtype=np.float32)
-        for j, cell_id in enumerate(unique_cells):
-            lat, lon = h3.cell_to_latlng(cell_id)
-            cell_lats[j] = lat
-            cell_lons[j] = lon
-            cell_areas[j] = h3.cell_area(cell_id, unit="km^2")
-        columns["lat"] = cell_lats
-        columns["lon"] = cell_lons
-        columns["area_km2"] = cell_areas
+        # Convert H3 hex strings to int64 for efficient Parquet encoding
+        cell_ids_int = np.array([int(c, 16) for c in unique_cells], dtype=np.int64)
+        columns: dict[str, np.ndarray] = {"h3_index": cell_ids_int}
 
         # Sum population per cell for each year
         for yr, vals in vals_v.items():
@@ -347,13 +336,7 @@ def get_duckdb_connection() -> duckdb.DuckDBPyConnection:
     log.info("Initializing DuckDB %s", duckdb.__version__)
     con = duckdb.connect()
 
-    for ext in ("spatial",):
-        try:
-            con.load_extension(ext)
-        except Exception:
-            con.install_extension(ext)
-            con.load_extension(ext)
-        log.info("  Extension '%s' loaded", ext)
+    log.info("  DuckDB ready (no extensions needed)")
 
     if S3_BUCKET:
         aws_key = os.environ.get("AWS_ACCESS_KEY_ID", "")
@@ -422,19 +405,13 @@ def merge_temp_to_final(
     con.sql(f"""
         COPY (
             SELECT h3_index,
-                   ST_Point(
-                       any_value(lon), any_value(lat)
-                   )::GEOMETRY('EPSG:4326') AS geometry,
-                   any_value(lat)::FLOAT AS lat,
-                   any_value(lon)::FLOAT AS lon,
-                   any_value(area_km2)::FLOAT AS area_km2,
                    {sum_cols}
             FROM read_parquet('{temp_glob}', hive_partitioning=false)
             GROUP BY h3_index
             ORDER BY h3_index
         ) TO '{output_path}'
         (FORMAT PARQUET, COMPRESSION ZSTD, COMPRESSION_LEVEL 3,
-         ROW_GROUP_SIZE 1000000, GEOPARQUET_VERSION 'BOTH')
+         ROW_GROUP_SIZE 1000000)
     """)
 
     log.info(
@@ -485,23 +462,18 @@ def write_metadata(
         "source_url": f"{WORLDPOP_BASE_URL}/FuturePop_{scenario}_1km_v0_2.zip",
         "doi": "10.5258/SOTON/WP00849",
         "crs": "EPSG:4326",
-        "geometry_type": "native_parquet_2.11_geometry",
-        "geometry_encoding": "WKB with GEOMETRY logical type annotation",
         "h3_resolutions": h3_resolutions,
         "scenario": scenario,
         "years": years,
         "layout": "single Parquet file per resolution, sorted by h3_index",
         "columns": {
-            "h3_index": "H3 cell ID (hex string)",
-            "geometry": "Cell center POINT, native Parquet 2.11+ GEOMETRY('EPSG:4326')",
-            "lat": "Cell center latitude (float32)",
-            "lon": "Cell center longitude (float32)",
-            "area_km2": "H3 cell area in km2 (float32)",
+            "h3_index": "H3 cell ID (int64, hex-encoded H3 index as integer)",
             **{
                 f"pop_{y}": f"Projected population count for {y} (float32)"
                 for y in years
             },
         },
+        "h3_index_note": "Use h3.int_to_str(h3_index) to get hex string; h3.cell_to_latlng() for lat/lon; h3.cell_area() for area_km2; h3.cell_to_boundary() for geometry",
         "aggregation": "SUM — pixel population counts summed per H3 cell",
         "compression": "ZSTD level 3",
         "cells_per_resolution": {str(k): v for k, v in sorted(cells_per_res.items())},
